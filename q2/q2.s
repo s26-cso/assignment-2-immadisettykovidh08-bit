@@ -1,6 +1,6 @@
 .section .data
-newline:.asciz "\n"
 fmt: .asciz "%lld "
+nl:  .asciz "\n"
 
 .section .text
 .global main
@@ -10,152 +10,157 @@ fmt: .asciz "%lld "
 .extern free
 
 main:
-  addi sp,sp,-64 #add stack 
-  sd ra,0(sp)  #store return address
-  sd s0,8(sp)  #store all saved registers in stack 
-  sd s1,16(sp)
-  sd s2,24(sp)
-  sd s3,32(sp)
-  sd s4,40(sp)
-  sd s5,48(sp)
-  sd s6,56(sp)
-  
-  addi s0,a0,-1 #s0=n
-  mv s1,a1     #s1=a1=argv
-  li t0,8
+    addi sp, sp, -64
+    sd ra, 0(sp)
+    sd s0, 8(sp)
+    sd s1, 16(sp)
+    sd s2, 24(sp)
+    sd s3, 32(sp)
+    sd s4, 40(sp)
+    sd s5, 48(sp)
+    sd s6, 56(sp)
 
-#allocate arr (s4)
+    addi s0, a0, -1      # n
+    mv s1, a1            # argv
 
-  mul a0,s0,t0    #n*8bytes
-  call malloc
-  mv s4,a0         #s4=base address of arr
+#allocate arrays
+    li t0, 8
+    mul a0, s0, t0
+    call malloc
+    mv s2, a0            # arr
 
-# Allocate ans (s5)
+    mul a0, s0, t0
+    call malloc
+    mv s3, a0            # ans
 
-  li t0,8         #n*8bytes
-  mul a0,s0,t0  
-  call malloc
-  mv s5,a0         #s5=base address of ans
+    mul a0, s0, t0
+    call malloc
+    mv s4, a0            # stack
 
-# Allocate stack (s6)
+#read input
+    li t1, 0
+read:
+    bge t1, s0, init_ans
 
-  li t0,8         #n*8bytes
-  mul a0,s0,t0    
-  call malloc
-  mv s6,a0         #s6=base address of stack
-  li s2,0      #s2 is the pointer == i
-scan_loop:
-  bge s2,s0,scan_done #if s2>=n done
+    slli t2, t1, 3
+    add t3, s1, t2
+    ld a0, 8(t3)
+    call atoi
 
-  slli t1,s2,3  #i*8
-  add t2,s1,t1  #argv+(i*8)  gives address of &argv[i]
-  ld a0,8(t2)   #load argv[i+1],,since argv[0] is ./a or ./prog
-  call atoi    #converts string(a0) to int
-  
-  slli t4,s2,3 #i*8
-  add t5,s4,t4 #arr+(i*8) s4=arr pointer
-  sd a0,0(t5)  #store a0 at arr[i]
+    slli t4, t1, 3
+    add t5, s2, t4
+    sd a0, 0(t5)
 
-  addi s2,s2,1 #i++
-  j scan_loop  
+    addi t1, t1, 1
+    j read
 
-scan_done:
-  li t0,0  #pointer j=0
+#initialize ans
+init_ans:
+    li t1, 0
+init_loop:
+    bge t1, s0, start_nge
 
-ans_loop:
-  bge t0,s0,ans_done #if(j>=n) done
+    slli t2, t1, 3
+    add t3, s3, t2
+    li t4, -1
+    sd t4, 0(t3)
 
-  slli t2,t0,3  #j*8
-  add t3,s5,t2  #ans+(j*8)
-  li t4,-1   
-  sd t4,0(t3)  #ans[j]=-1
+    addi t1, t1, 1
+    j init_loop
 
-  addi t0,t0,1 #j++
-  j ans_loop
+#NGE logic
+start_nge:
+    li s5, -1            # top = -1
+    addi t0, s0, -1      # i = n-1
 
-ans_done:
-  li s3,-1       #stack top pointer top=-1
-  addi s2,s0,-1  #i=n-1
+outer:
+    blt t0, x0, print
 
-loop:
-  blt s2,x0,print #if(i<0) print everything
+inner:
+    blt s5, x0, assign
 
-loop2:
-  blt s3,x0,loop3 #if(s3<0) go to loop3
+    # get stack[top]
+    slli t1, s5, 3
+    add t2, s4, t1
+    ld t3, 0(t2)
 
-  slli t2,s3,3 #top*8
-  add t3,s6,t2 #stack+(top*8)
-  ld t4,0(t3) #t4 has stack[top] i.e arr index
+    # arr[stack[top]]
+    slli t4, t3, 3
+    add t5, s2, t4
+    ld t6, 0(t5)
 
-  slli t2,t4,3 #t4*8  to get arr[stack[top]]
-  add t3,s4,t2 #arr+(t4*8) 
-  ld t6,0(t3) #t6 now has arr[stack[top]];
+    # arr[i]
+    slli t1, t0, 3
+    add t2, s2, t1
+    ld t3, 0(t2)
+    ble t6, t3, pop_stack
+    j assign
 
-  slli t2,s2,3 #i*8
-  add t3,s4,t2 #arr+(i*8)
-  ld t5,0(t3)  #t5 has arr[i];
+pop_stack:
+    addi s5, s5, -1
+    j inner
 
-  ble t6,t5,pop  #if( arr[stack[top]] <= arr[i] ) pop
-  j loop3
+assign:
+    blt s5, x0, push_idx
 
-pop:
-  addi s3,s3,-1  #top--;
-  j loop2
+    # ans[i] = stack[top]
+    slli t1, t0, 3
+    add t2, s3, t1
 
-loop3:
-  blt s3,x0,push  # if(top<0) push
+    slli t3, s5, 3
+    add t4, s4, t3
+    ld t5, 0(t4)
 
-  slli t2,s2,3    # i*8
-  add t3,s5,t2   #ans+(i*8)
+    sd t5, 0(t2)
 
-  slli t5,s3,3  #top*8
-  add t6,s6,t5  #stack + top*8
-  ld t1,0(t6)  #t1=stack[top]
-  sd t1,0(t3)  #(t3)==>ans[i]=t1
+push_idx:
+    addi s5, s5, 1
+    slli t1, s5, 3
+    add t2, s4, t1
+    sd t0, 0(t2)
 
-push:
-  addi s3,s3,1 #top++
+    addi t0, t0, -1
+    j outer
 
-  slli t2,s3,3 #top*8
-  add t3,s6,t2 #stack + top*8
-  sd s2,0(t3)  #stack[top]=s2 (arr index)
-
-  addi s2,s2,-1 #i--
-  j loop
-
+#print
 print:
-  li s2,0   #s2 is a pointer
+    li t0, 0
+
 print_loop:
-  bge s2,s0,free_all  #if (s2>=n) exit
+    bge t0, s0, cleanup
 
-  slli t2,s2,3  #s2*8
-  add t3,s5,t2  #ans+s2*8
-  ld a1,0(t3)   #a1=ans[i]
+    slli t1, t0, 3
+    add t2, s3, t1
+    ld a1, 0(t2)
 
-  la a0,fmt    #a0 = "%lld"
-  call printf  #print
+    la a0, fmt
+    call printf
 
-  addi s2,s2,1  #s2++
-  j print_loop
+    addi t0, t0, 1
+    j print_loop
 
-free_all:
-  la a0,newline #a0 = "\n"
-  call printf  #prints newline
-  mv a0,s4
-  call free
-  mv a0,s5
-  call free
-  mv a0,s6
-  call free
-exit:
-  ld ra,0(sp)  #reload return address
-  ld s0,8(sp)  #return saved registers from stack
-  ld s1,16(sp)
-  ld s2,24(sp)
-  ld s3,32(sp)
-  ld s4,40(sp)
-  ld s5,48(sp)
-  ld s6,56(sp)
-  add sp,sp,64 #remove stack pointer
-  li a0,0  # return 0
-  ret
+#cleanup
+cleanup:
+    la a0, nl
+    call printf
+
+    mv a0, s2
+    call free
+    mv a0, s3
+    call free
+    mv a0, s4
+    call free
+
+    ld ra, 0(sp)
+    ld s0, 8(sp)
+    ld s1, 16(sp)
+    ld s2, 24(sp)
+    ld s3, 32(sp)
+    ld s4, 40(sp)
+    ld s5, 48(sp)
+    ld s6, 56(sp)
+    addi sp, sp, 64
+
+    li a0, 0
+    ret
+    
